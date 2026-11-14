@@ -1,0 +1,1194 @@
+{
+  "info": {
+    "name": "Store Inventory API — QA",
+    "description": "Automated API checks for store-inventory-api. Run in order (folders 01 → 04). Each run uses a unique runId so it can be repeated without restarting the API.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "event": [
+    {
+      "listen": "test",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "pm.test(\"Response time is below 1000 ms\", () => pm.expect(pm.response.responseTime).to.be.below(1000));",
+          "if (pm.response.code !== 204) {",
+          "  pm.test(\"Response is JSON\", () => pm.expect(pm.response.headers.get(\"Content-Type\")).to.include(\"application/json\"));",
+          "}"
+        ]
+      }
+    }
+  ],
+  "variable": [
+    {
+      "key": "runId",
+      "value": ""
+    },
+    {
+      "key": "productId",
+      "value": ""
+    },
+    {
+      "key": "productSku",
+      "value": ""
+    },
+    {
+      "key": "deliveryId",
+      "value": ""
+    }
+  ],
+  "item": [
+    {
+      "name": "01 Products — positive",
+      "item": [
+        {
+          "name": "TC-01 List products",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/products",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "products"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// New unique id for every run, so SKUs and invoice numbers never collide",
+                  "pm.collectionVariables.set(\"runId\", Date.now().toString());"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 200 OK\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"Response is an array of products\", () => {",
+                  "  const list = pm.response.json();",
+                  "  pm.expect(list).to.be.an(\"array\");",
+                  "  list.forEach(p => pm.expect(p).to.include.keys(\"id\", \"sku\", \"name\", \"quantity\", \"lowStock\"));",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "TC-02 Create product",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/products",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "products"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"sku\": \"qa-{{runId}}\",\n  \"name\": \"QA test product\",\n  \"category\": \"QA-{{runId}}\",\n  \"price\": 1.5,\n  \"quantity\": 20,\n  \"minStock\": 5\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 201 Created\", () => pm.response.to.have.status(201));",
+                  "const b = pm.response.json();",
+                  "pm.test(\"Location header points to the new product\", () => {",
+                  "  pm.expect(pm.response.headers.get(\"Location\")).to.match(new RegExp(\"/api/products/\" + b.id + \"$\"));",
+                  "});",
+                  "pm.test(\"SKU is stored in upper case\", () => pm.expect(b.sku).to.eql((\"qa-\" + pm.collectionVariables.get(\"runId\")).toUpperCase()));",
+                  "pm.test(\"New product is not low on stock\", () => pm.expect(b.lowStock).to.eql(false));",
+                  "pm.collectionVariables.set(\"productId\", b.id);",
+                  "pm.collectionVariables.set(\"productSku\", b.sku);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "TC-03 Get product by id",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/products/{{productId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "products",
+                "{{productId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 200 OK\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"Returns the created product\", () => {",
+                  "  const b = pm.response.json();",
+                  "  pm.expect(b.id).to.eql(Number(pm.collectionVariables.get(\"productId\")));",
+                  "  pm.expect(b.quantity).to.eql(20);",
+                  "  pm.expect(b.price).to.eql(1.5);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "TC-04 Update product",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/products/{{productId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "products",
+                "{{productId}}"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"sku\": \"{{productSku}}\",\n  \"name\": \"QA test product (updated)\",\n  \"category\": \"QA-{{runId}}\",\n  \"price\": 3.49,\n  \"quantity\": 12,\n  \"minStock\": 15\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 200 OK\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"Fields are updated and product becomes low on stock\", () => {",
+                  "  const b = pm.response.json();",
+                  "  pm.expect(b.name).to.eql(\"QA test product (updated)\");",
+                  "  pm.expect(b.price).to.eql(3.49);",
+                  "  pm.expect(b.lowStock).to.eql(true);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "TC-05 Low-stock report contains product",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/products/low-stock",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "products",
+                "low-stock"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 200 OK\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"Updated product is in the low-stock list\", () => {",
+                  "  const skus = pm.response.json().map(p => p.sku);",
+                  "  pm.expect(skus).to.include(pm.collectionVariables.get(\"productSku\"));",
+                  "});",
+                  "pm.test(\"Every listed product is at or below minimum stock\", () => {",
+                  "  pm.response.json().forEach(p => pm.expect(p.quantity).to.be.at.most(p.minStock));",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "TC-06 Sell items",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/products/{{productId}}/sell",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "products",
+                "{{productId}}",
+                "sell"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"quantity\": 2\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 200 OK\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"Stock decreased from 12 to 10\", () => pm.expect(pm.response.json().quantity).to.eql(10));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "TC-07 Filter by category (case-insensitive)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/products?category=qa-{{runId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "products"
+              ],
+              "query": [
+                {
+                  "key": "category",
+                  "value": "qa-{{runId}}"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 200 OK\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"Exactly one product in the test category\", () => pm.expect(pm.response.json()).to.have.lengthOf(1));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "02 Products — negative",
+      "item": [
+        {
+          "name": "TC-08 Duplicate SKU is rejected",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/products",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "products"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"sku\": \"qa-{{runId}}\",\n  \"name\": \"QA test product\",\n  \"category\": \"QA-{{runId}}\",\n  \"price\": 1.5,\n  \"quantity\": 20,\n  \"minStock\": 5\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 409 Conflict\", () => pm.response.to.have.status(409));",
+                  "pm.test(\"Error body has standard shape\", () => {",
+                  "  const b = pm.response.json();",
+                  "  pm.expect(b).to.have.all.keys(\"timestamp\", \"status\", \"error\", \"message\", \"details\");",
+                  "  pm.expect(b.status).to.eql(pm.response.code);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "TC-09 Invalid fields return validation errors",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/products",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "products"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"sku\": \"\",\n  \"name\": \"X\",\n  \"category\": \"Dairy\",\n  \"price\": -1,\n  \"quantity\": -5,\n  \"minStock\": 0\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 400 Bad Request\", () => pm.response.to.have.status(400));",
+                  "pm.test(\"Error body has standard shape\", () => {",
+                  "  const b = pm.response.json();",
+                  "  pm.expect(b).to.have.all.keys(\"timestamp\", \"status\", \"error\", \"message\", \"details\");",
+                  "  pm.expect(b.status).to.eql(pm.response.code);",
+                  "});",
+                  "pm.test(\"Three field errors: sku, price, quantity\", () => {",
+                  "  const d = pm.response.json().details;",
+                  "  pm.expect(d).to.have.lengthOf(3);",
+                  "  [\"sku\", \"price\", \"quantity\"].forEach(f => pm.expect(d.some(x => x.startsWith(f + \":\"))).to.be.true);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "TC-10 Price with 3 decimals is rejected",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/products",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "products"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"sku\": \"qa-price-{{runId}}\",\n  \"name\": \"Tea\",\n  \"category\": \"Beverages\",\n  \"price\": 1.999,\n  \"quantity\": 5,\n  \"minStock\": 1\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 400 Bad Request\", () => pm.response.to.have.status(400));",
+                  "pm.test(\"Error points to price\", () => pm.expect(pm.response.json().details[0]).to.match(/^price:/));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "TC-11 Quantity above limit is rejected",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/products",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "products"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"sku\": \"qa-max-{{runId}}\",\n  \"name\": \"Too many\",\n  \"category\": \"Dairy\",\n  \"price\": 1,\n  \"quantity\": 1000001,\n  \"minStock\": 0\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 400 Bad Request\", () => pm.response.to.have.status(400));",
+                  "pm.test(\"Error points to quantity\", () => pm.expect(pm.response.json().details[0]).to.match(/^quantity:/));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "TC-12 Malformed JSON is rejected",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/products",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "products"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"sku\": \"BROKEN\", \"price\": }",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 400 Bad Request\", () => pm.response.to.have.status(400));",
+                  "pm.test(\"Clear error message\", () => pm.expect(pm.response.json().message).to.eql(\"Malformed JSON request body\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "TC-13 Selling more than in stock",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/products/{{productId}}/sell",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "products",
+                "{{productId}}",
+                "sell"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"quantity\": 11\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 409 Conflict\", () => pm.response.to.have.status(409));",
+                  "pm.test(\"Error body has standard shape\", () => {",
+                  "  const b = pm.response.json();",
+                  "  pm.expect(b).to.have.all.keys(\"timestamp\", \"status\", \"error\", \"message\", \"details\");",
+                  "  pm.expect(b.status).to.eql(pm.response.code);",
+                  "});",
+                  "pm.test(\"Message explains missing stock\", () => pm.expect(pm.response.json().message).to.include(\"Not enough stock\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "TC-14 Selling zero items",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/products/{{productId}}/sell",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "products",
+                "{{productId}}",
+                "sell"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"quantity\": 0\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 400 Bad Request\", () => pm.response.to.have.status(400));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "TC-15 Unknown product id",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/products/999999",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "products",
+                "999999"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 404 Not Found\", () => pm.response.to.have.status(404));",
+                  "pm.test(\"Error body has standard shape\", () => {",
+                  "  const b = pm.response.json();",
+                  "  pm.expect(b).to.have.all.keys(\"timestamp\", \"status\", \"error\", \"message\", \"details\");",
+                  "  pm.expect(b.status).to.eql(pm.response.code);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "TC-16 Non-numeric product id",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/products/abc",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "products",
+                "abc"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 400 Bad Request\", () => pm.response.to.have.status(400));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "03 Deliveries",
+      "item": [
+        {
+          "name": "TC-17 Receive delivery with discrepancy",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/deliveries",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "deliveries"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"supplier\": \"QA Supplier\",\n  \"invoiceNumber\": \"QA-INV-{{runId}}\",\n  \"items\": [\n    {\n      \"sku\": \"{{productSku}}\",\n      \"invoicedQuantity\": 10,\n      \"receivedQuantity\": 8\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 201 Created\", () => pm.response.to.have.status(201));",
+                  "const b = pm.response.json();",
+                  "pm.test(\"Delivery is marked as DISCREPANCY\", () => {",
+                  "  pm.expect(b.status).to.eql(\"DISCREPANCY\");",
+                  "  pm.expect(b.discrepancyCount).to.eql(1);",
+                  "  pm.expect(b.items[0].difference).to.eql(-2);",
+                  "});",
+                  "pm.collectionVariables.set(\"deliveryId\", b.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "TC-18 Stock increased by received quantity",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/products/{{productId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "products",
+                "{{productId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 200 OK\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"10 in stock + 8 received = 18\", () => pm.expect(pm.response.json().quantity).to.eql(18));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "TC-19 Get delivery by id",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/deliveries/{{deliveryId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "deliveries",
+                "{{deliveryId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 200 OK\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"Invoice number matches\", () => pm.expect(pm.response.json().invoiceNumber).to.eql(\"QA-INV-\" + pm.collectionVariables.get(\"runId\")));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "TC-20 Same invoice cannot be received twice",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/deliveries",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "deliveries"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"supplier\": \"QA Supplier\",\n  \"invoiceNumber\": \"QA-INV-{{runId}}\",\n  \"items\": [\n    {\n      \"sku\": \"{{productSku}}\",\n      \"invoicedQuantity\": 1,\n      \"receivedQuantity\": 1\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 409 Conflict\", () => pm.response.to.have.status(409));",
+                  "pm.test(\"Error body has standard shape\", () => {",
+                  "  const b = pm.response.json();",
+                  "  pm.expect(b).to.have.all.keys(\"timestamp\", \"status\", \"error\", \"message\", \"details\");",
+                  "  pm.expect(b.status).to.eql(pm.response.code);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "TC-21 Unknown SKU rejects the delivery",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/deliveries",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "deliveries"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"supplier\": \"QA Supplier\",\n  \"invoiceNumber\": \"QA-INV-UNKNOWN-{{runId}}\",\n  \"items\": [\n    {\n      \"sku\": \"{{productSku}}\",\n      \"invoicedQuantity\": 5,\n      \"receivedQuantity\": 5\n    },\n    {\n      \"sku\": \"NO-SUCH-SKU\",\n      \"invoicedQuantity\": 1,\n      \"receivedQuantity\": 1\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 404 Not Found\", () => pm.response.to.have.status(404));",
+                  "pm.test(\"Error body has standard shape\", () => {",
+                  "  const b = pm.response.json();",
+                  "  pm.expect(b).to.have.all.keys(\"timestamp\", \"status\", \"error\", \"message\", \"details\");",
+                  "  pm.expect(b.status).to.eql(pm.response.code);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "TC-22 Rejected delivery did not change stock",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/products/{{productId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "products",
+                "{{productId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 200 OK\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"Stock is still 18 (whole delivery rolled back)\", () => pm.expect(pm.response.json().quantity).to.eql(18));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "TC-23 Duplicate SKU lines are rejected",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/deliveries",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "deliveries"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"supplier\": \"QA Supplier\",\n  \"invoiceNumber\": \"QA-INV-DUP-{{runId}}\",\n  \"items\": [\n    {\n      \"sku\": \"{{productSku}}\",\n      \"invoicedQuantity\": 1,\n      \"receivedQuantity\": 1\n    },\n    {\n      \"sku\": \"{{productSku}}\",\n      \"invoicedQuantity\": 1,\n      \"receivedQuantity\": 1\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 409 Conflict\", () => pm.response.to.have.status(409));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "TC-24 Delivery without items is rejected",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/deliveries",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "deliveries"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"supplier\": \"QA Supplier\",\n  \"invoiceNumber\": \"QA-INV-EMPTY-{{runId}}\",\n  \"items\": []\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 400 Bad Request\", () => pm.response.to.have.status(400));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "TC-25 Matching delivery has status OK",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/deliveries",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "deliveries"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"supplier\": \"QA Supplier\",\n  \"invoiceNumber\": \"QA-INV-OK-{{runId}}\",\n  \"items\": [\n    {\n      \"sku\": \"{{productSku}}\",\n      \"invoicedQuantity\": 2,\n      \"receivedQuantity\": 2\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 201 Created\", () => pm.response.to.have.status(201));",
+                  "pm.test(\"Status OK, no discrepancies\", () => {",
+                  "  pm.expect(pm.response.json().status).to.eql(\"OK\");",
+                  "  pm.expect(pm.response.json().discrepancyCount).to.eql(0);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "TC-26 List deliveries",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/deliveries",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "deliveries"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 200 OK\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"Both successful test deliveries are listed\", () => {",
+                  "  const invoices = pm.response.json().map(d => d.invoiceNumber);",
+                  "  const id = pm.collectionVariables.get(\"runId\");",
+                  "  pm.expect(invoices).to.include(\"QA-INV-\" + id);",
+                  "  pm.expect(invoices).to.include(\"QA-INV-OK-\" + id);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "04 Cleanup",
+      "item": [
+        {
+          "name": "TC-27 Delete product",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/products/{{productId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "products",
+                "{{productId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 204 No Content\", () => pm.response.to.have.status(204));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "TC-28 Deleted product is gone",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/products/{{productId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "products",
+                "{{productId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 404 Not Found\", () => pm.response.to.have.status(404));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
